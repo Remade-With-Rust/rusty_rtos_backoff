@@ -8,18 +8,19 @@
 
 Exponential backoff with jitter, the Kairos remake of backoffAlgorithm. MIT OR Apache-2.0.
 
-**This crate is a scaffold.** The layout, feature ladder, lint policy and CI
-gates exist; there is no implementation behind them yet. It is listed here so
-the family's shape is visible, and the README says so rather than implying
-otherwise.
+**K7's first library**, and the first thing in this family diffed against a C
+*library* rather than the kernel.
 
-- **What exists**: the crate layout, the `no_std` / `alloc` / `std` feature
-  ladder, the workspace lint policy, `cargo deny`, and the CI gate every Kairos
-  package shares.
-- **What does not**: the implementation, and its oracle — the vectors from the C unit tests. This is
-  milestone **K7**, which follows the kernel, the ports and the C ABI.
+- **Proven**: exponential backoff with jitter, diffed call-for-call against
+  `backoff_algorithm.c` over 192 calls across 8 contexts chosen to reach every
+  branch it has.
+- **No clock and no randomness of its own.** The caller supplies the random
+  value, exactly as `BackoffAlgorithm_GetNextBackoff` does — the entropy source
+  is the application's business, and keeping that boundary is what lets both
+  arms be driven from one sequence.
 
-**Known gaps.** Everything above the scaffold. Do not depend on this crate.
+**Known gaps.** None in the algorithm. It does not sleep and it does not
+generate randomness, because the C does neither.
 
 - This package's plan: [docs/plans/rusty_rtos_backoff.md](https://github.com/Remade-With-Rust/rusty_rtos_backoff/blob/main/docs/plans/rusty_rtos_backoff.md)
 - Every number: [docs/LEDGER.md](https://github.com/Remade-With-Rust/rusty_rtos_backoff/blob/main/docs/LEDGER.md)
@@ -32,19 +33,62 @@ flashed" means no chip has run it.
 
 ## Conformance
 
-**None yet, and that is the honest answer.** The Kairos rule is that a README
-makes no capability claim that is not backed by a test, a benchmark ledger entry
-or a kill test recorded in the plan. This section stays empty until K7's oracle
-passes.
+**192 calls across 8 contexts agree with `backoff_algorithm.c`**, compiled
+verbatim from the pinned checkout (v1.4.2 at `14f4c88`) — on the status, the
+delay, the next jitter maximum and the attempt count, after every call.
+
+```sh
+cargo test -p rusty_rtos_backoff-core
+```
+
+The C arm's trace is checked in, so this diffs with no C toolchain. Fetch the
+oracle itself with `kairos oracle fetch --lib backoffAlgorithm`.
+
+**The branch guard.** A backoff context has four interesting branches — the
+jitter maximum doubling, the jitter maximum clamping, attempts exhausted, and
+`RETRY_FOREVER` never exhausting — and a run that misses one proves
+correspondingly less. A standing test fails when any is not reached. That is
+the third shape of that guard here, after `heap_4`'s (too few refusals) and
+`heap_1`'s (never exhausted), and all three say the same thing: a differential
+whose workload cannot fail is a differential about nothing.
+
+**Poison-proven twice, on the two places a reimplementation drifts:**
+
+* the jitter range is **inclusive** — `randomValue % ( nextJitterMax + 1 )`, so
+  the maximum itself is reachable. Dropping the `+ 1` fails the differential
+  and a dedicated test;
+* the doubling test uses **integer division** — `nextJitterMax <
+  maxBackoffDelay / 2` truncates, so with an odd ceiling of 999 a jitter
+  maximum of 499 **clamps** rather than doubling. Making that comparison exact
+  fails the odd-ceiling test.
+
+Two more of the C's decisions are pinned by tests: the clamp goes to the
+ceiling exactly rather than to double it, and `attemptsDone` moves **only on
+success**, so an exhausted context is left untouched and asking again is
+idempotent.
 
 ## Using it
 
-Not yet. Track K7 in the
-[mission plan](https://github.com/Remade-With-Rust/kairos/blob/main/docs/plans/rtos-mission.md).
+```rust
+use rusty_rtos_backoff::{Backoff, RETRY_FOREVER};
+
+// base, ceiling, attempts -- `BackoffAlgorithm_InitializeParams`.
+let mut backoff = Backoff::new(500, 10_000, 5);
+
+// The caller supplies the random value, as the C does.
+match backoff.next_backoff(some_random_u32) {
+    Ok(delay_ms) => { /* wait `delay_ms`, then try again */ }
+    Err(_) => { /* BackoffAlgorithmRetriesExhausted */ }
+}
+```
+
+With `Backoff::new(base, ceiling, RETRY_FOREVER)` it never exhausts.
 
 ## Performance
 
-No rows. Nothing here is measured.
+No rows, and none are wanted: the whole algorithm is one modulo, one compare
+and one add. What matters about it is that it agrees with the C, which the
+differential says.
 
 ## Portability
 
