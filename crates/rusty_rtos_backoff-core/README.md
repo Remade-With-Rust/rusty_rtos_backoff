@@ -14,8 +14,9 @@ exponential backoff with jitter, the Kairos remake of FreeRTOS's
 - **Proven against the C**: **192 of 192 calls agree** — `backoffAlgorithm`'s
   own unit-test vectors, plus its PRNG driven identically so the two sides walk
   the same sequence rather than merely landing in the same range.
-- **K7's first library**, and the first thing in the family diffed against a C
-  *library* rather than against the kernel.
+- **No clock and no randomness of its own.** The caller supplies the random
+  value, exactly as `BackoffAlgorithm_GetNextBackoff` does, which is also what
+  lets both arms be driven from one sequence.
 
 ## Conformance
 

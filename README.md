@@ -6,10 +6,9 @@
 [![docs.rs](https://docs.rs/rusty_rtos_backoff/badge.svg)](https://docs.rs/rusty_rtos_backoff)
 [![license](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 
-Exponential backoff with jitter, the Kairos remake of backoffAlgorithm. MIT OR Apache-2.0.
-
-**K7's first library**, and the first thing in this family diffed against a C
-*library* rather than the kernel.
+Exponential backoff with jitter, the Kairos remake of backoffAlgorithm.
+Diffed call-for-call against the C over 192 calls across 8 contexts, chosen to
+reach every branch the algorithm has.
 
 - **Proven**: exponential backoff with jitter, diffed call-for-call against
   `backoff_algorithm.c` over 192 calls across 8 contexts chosen to reach every
